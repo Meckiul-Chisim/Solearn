@@ -1,0 +1,10 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+.env
+.env*.local
+package-lock.json
+*.sqlite-shm
+*.sqlite-wal
