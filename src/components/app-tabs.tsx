@@ -1,31 +1,30 @@
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useColorScheme } from 'react-native';
-
-import { Colors } from '@/constants/theme';
 
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      backgroundColor="#FFFFFF"
+      indicatorColor="#EAF3EC"
+      labelStyle={{ selected: { color: '#287A4B' } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
-        />
+        <NativeTabs.Trigger.Icon sf="house.fill" />
       </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
-        />
+      <NativeTabs.Trigger name="learn">
+        <NativeTabs.Trigger.Label>Learn</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="book.closed.fill" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="rewards">
+        <NativeTabs.Trigger.Label>Rewards</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="gift.fill" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="shop">
+        <NativeTabs.Trigger.Label>Shop</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="bag.fill" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="wallet">
+        <NativeTabs.Trigger.Label>Wallet</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="wallet.bifold.fill" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
