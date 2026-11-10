@@ -92,14 +92,22 @@ async function apiRequest<T>(
   token: string | null,
   options: RequestOptions = {},
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? ` (${error.message})` : "";
+    throw new Error(
+      `Could not connect to the SoloEarn API at ${API_URL}.${reason} Make sure the backend is running. On a physical device, set EXPO_PUBLIC_API_URL to your computer's LAN address and restart Expo.`,
+    );
+  }
   const data = await response.json() as { error?: string } & T;
   if (!response.ok) {
     throw new ApiError(data.error ?? "The request could not be completed.", response.status);
