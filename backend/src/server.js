@@ -116,8 +116,9 @@ const auth = (req, res, next) => {
 const publicUser = (user) => ({
   id: user.id, name: user.name, email: user.email, referralCode: user.referral_code,
   points: user.points, streak: user.streak,
-  // Lets the app disable the daily-reward button without guessing.
-  claimedToday: user.last_reward_date === utcDate(),
+  // Lets the app enable or disable the daily-reward button without guessing.
+  lastRewardDate: user.last_reward_date,
+  canClaimDaily: user.last_reward_date !== utcDate(),
 });
 const utcDate = () => new Date().toISOString().slice(0, 10);
 
@@ -161,16 +162,30 @@ app.post('/auth/login', (req, res) => {
   res.json({ token: sign({ userId: user.id }), user: publicUser(user) });
 });
 
-app.get('/me', auth, (req, res) => {
-  // Totals for the wallet screen, computed from the ledger rather than stored.
-  const sumFor = (table) => db.prepare(`SELECT COALESCE(SUM(points), 0) AS total FROM ${table} WHERE user_id = ?`).get(req.user.id).total;
-  res.json({
-    user: { ...publicUser(req.user), lifetimeEarned: sumFor('rewards'), withdrawn: sumFor('withdrawals') },
-  });
-});
+app.get('/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
 app.get('/questions', auth, (_req, res) => {
-  const rows = db.prepare('SELECT id, subject, prompt, options FROM questions ORDER BY id').all();
+  const rows = db.prepare('SELECT id, subject, prompt, options, points FROM questions ORDER BY id').all();
   res.json({ questions: rows.map((q) => ({ ...q, options: JSON.parse(q.options) })) });
+});
+
+// The user's recent point history for the wallet screen: points earned
+// (rewards) and points spent on withdrawals, newest first.
+const activityLabels = {
+  question: 'Quiz answer',
+  daily: 'Daily reward',
+  referral: 'Referral bonus',
+  ad: 'Ad reward',
+  withdrawal: 'Payout request',
+};
+app.get('/activity', auth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT kind AS type, points, created_at AS createdAt FROM rewards WHERE user_id = ?
+    UNION ALL
+    SELECT 'withdrawal' AS type, -points AS points, created_at AS createdAt FROM withdrawals WHERE user_id = ?
+    ORDER BY createdAt DESC
+    LIMIT 20
+  `).all(req.user.id, req.user.id);
+  res.json({ activity: rows.map((row) => ({ ...row, description: activityLabels[row.type] ?? row.type })) });
 });
 
 app.post('/questions/:id/answer', auth, (req, res) => {
@@ -243,6 +258,10 @@ app.post('/withdrawals', auth, (req, res) => {
   }
   res.status(201).json({ status: 'pending' });
 });
+
+// Unknown routes get a JSON error like every other response, so the app can
+// show a readable message instead of failing to parse an HTML error page.
+app.use((_req, res) => res.status(404).json({ error: 'Not found.' }));
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => console.log(`SoLearn API listening on http://localhost:${port}`));

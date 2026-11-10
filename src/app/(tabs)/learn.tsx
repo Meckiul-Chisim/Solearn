@@ -1,186 +1,241 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import PointsHeader from '@/components/points-header';
-import { api, ApiError, type AnswerResult, type Question } from '@/lib/api';
-import { useAuth } from '@/providers/auth-provider';
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import PointsHeader from "@/components/points-header";
+import { Question, useSolearn } from "@/context/solearn-context";
+
+type AnswerResult = {
+  correct: boolean;
+  pointsAwarded: number;
+  alreadyCompleted?: boolean;
+};
 
 export default function LearnScreen() {
-  const { refreshUser } = useAuth();
+  const { request, refreshUser } = useSolearn();
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [answerResult, setAnswerResult] = useState<AnswerResult | null>(null);
+  const [isComplete, setIsComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [questions, setQuestions] = useState<Question[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [index, setIndex] = useState(0);
-  const [pick, setPick] = useState<string | null>(null);
-  const [result, setResult] = useState<AnswerResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [earned, setEarned] = useState(0);
-  const [done, setDone] = useState(false);
-
-  // Bumping this number re-runs the fetch below (used to start over).
-  const [round, setRound] = useState(0);
+  const loadQuestions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await request<{ questions: Question[] }>("/questions");
+      setQuestions(result.questions);
+      setQuestionIndex(0);
+      setSelectedAnswer(null);
+      setAnswerResult(null);
+      setIsComplete(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load questions.");
+    } finally {
+      setLoading(false);
+    }
+  }, [request]);
 
   useEffect(() => {
-    let cancelled = false; // Ignore the response if the screen closes first.
-    api
-      .questions()
-      .then(({ questions: list }) => {
-        if (!cancelled) setQuestions(list);
-      })
-      .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : 'Could not load questions.');
-      });
-    return () => {
-      cancelled = true;
+    let active = true;
+    const fetchQuestions = async () => {
+      try {
+        const result = await request<{ questions: Question[] }>("/questions");
+        if (!active) return;
+        setQuestions(result.questions);
+        setQuestionIndex(0);
+        setSelectedAnswer(null);
+        setAnswerResult(null);
+        setIsComplete(false);
+      } catch (requestError) {
+        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load questions.");
+      } finally {
+        if (active) setLoading(false);
+      }
     };
-  }, [round]);
+    void fetchQuestions();
+    return () => {
+      active = false;
+    };
+  }, [request]);
 
-  // Start over (used by "Try again" and "Play again").
-  const load = () => {
-    setLoadError(null);
-    setQuestions(null);
-    setIndex(0);
-    setPick(null);
-    setResult(null);
-    setEarned(0);
-    setDone(false);
-    setRound((r) => r + 1);
-  };
+  const currentQuestion = questions[questionIndex];
 
-  const question = questions?.[index];
-  const isLast = questions ? index === questions.length - 1 : false;
-
-  // Send the answer to the server, which decides if it is right and awards points.
-  const choose = async (option: string) => {
-    if (!question || pick || submitting) return;
-    setPick(option);
-    setSubmitting(true);
+  const answer = async (choice: string) => {
+    if (!currentQuestion || selectedAnswer || saving) return;
+    setSelectedAnswer(choice);
+    setSaving(true);
+    setError(null);
     try {
-      const outcome = await api.answerQuestion(question.id, option);
-      setResult(outcome);
-      setEarned((total) => total + outcome.pointsAwarded);
-      if (outcome.pointsAwarded > 0) refreshUser(); // Keep the points header up to date.
-    } catch (e) {
-      setPick(null); // Let the user try again.
-      setLoadError(e instanceof ApiError ? e.message : 'Could not submit your answer.');
+      const result = await request<AnswerResult>(`/questions/${currentQuestion.id}/answer`, {
+        method: "POST",
+        body: { answer: choice },
+      });
+      setAnswerResult(result);
+      if (result.correct) await refreshUser();
+    } catch (requestError) {
+      setSelectedAnswer(null);
+      setError(requestError instanceof Error ? requestError.message : "Could not save your answer.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
   const next = () => {
-    if (!result) return;
-    if (isLast) return setDone(true);
-    setIndex((i) => i + 1);
-    setPick(null);
-    setResult(null);
+    if (!answerResult) return;
+    if (!answerResult.correct) {
+      setSelectedAnswer(null);
+      setAnswerResult(null);
+    } else if (questionIndex === questions.length - 1) {
+      setIsComplete(true);
+    } else {
+      setQuestionIndex((index) => index + 1);
+      setSelectedAnswer(null);
+      setAnswerResult(null);
+    }
   };
-
-  const feedback = !result
-    ? null
-    : result.correct
-      ? result.alreadyCompleted
-        ? 'Correct — you already earned points for this one.'
-        : `Correct answer — +${result.pointsAwarded} points!`
-      : 'Not quite. Keep going!';
 
   return (
     <View className="flex-1 bg-[#F6F7F2]">
-      <SafeAreaView className="flex-1" edges={['top']}>
+      <SafeAreaView className="flex-1" edges={["top"]}>
         <PointsHeader />
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
           <View className="mx-auto w-full max-w-[720px] px-5 pt-5">
-            <Link href="/" className="text-sm font-bold text-[#2B8052]">← Back to home</Link>
-            <Text className="mt-5 text-xs font-bold uppercase tracking-[1.5px] text-[#7B857D]">LEARN & EARN</Text>
-            <Text className="mt-1 text-[30px] font-black text-[#17251D]">Knowledge pays.</Text>
-            <Text className="mt-2 text-sm leading-5 text-[#7B857D]">Answer bite-sized questions and collect points as you learn.</Text>
+            <Link href="/" className="text-sm font-bold text-[#2B8052]">
+              ← Back to home
+            </Link>
+            <Text className="mt-5 text-xs font-bold uppercase tracking-[1.5px] text-[#7B857D]">
+              LEARN & EARN
+            </Text>
+            <Text className="mt-1 text-[30px] font-black text-[#17251D]">
+              Knowledge pays.
+            </Text>
+            <Text className="mt-2 text-sm leading-5 text-[#7B857D]">
+              Answer questions, learn something new, and earn points for correct answers.
+            </Text>
 
-            {!questions && !loadError && <ActivityIndicator className="mt-10" color="#287A4B" />}
-
-            {loadError && (
-              <View className="mt-6 rounded-2xl bg-[#FFF1EC] p-4">
-                <Text className="text-sm font-bold text-[#A44A2B]">{loadError}</Text>
-                <Pressable onPress={load} className="mt-3 self-start rounded-xl bg-[#174D35] px-4 py-2.5">
-                  <Text className="text-xs font-extrabold text-white">Try again</Text>
+            {loading ? (
+              <View className="mt-6 items-center rounded-3xl border border-[#E5E9E2] bg-white p-8">
+                <Text className="text-sm font-bold text-[#287A4B]">Loading your questions…</Text>
+              </View>
+            ) : error && questions.length === 0 ? (
+              <View className="mt-6 rounded-3xl border border-[#E5E9E2] bg-white p-5">
+                <Text className="font-bold text-[#8D3E2A]">{error}</Text>
+                <Pressable onPress={() => void loadQuestions()} className="mt-4 rounded-xl bg-[#174D35] p-3">
+                  <Text className="text-center font-extrabold text-white">Try again</Text>
                 </Pressable>
               </View>
-            )}
-
-            {questions && (
+            ) : isComplete ? (
+              <View className="mt-6 items-center rounded-3xl border border-[#E5E9E2] bg-white p-7">
+                <Text className="text-5xl">🏆</Text>
+                <Text className="mt-4 text-2xl font-black text-[#17251D]">
+                  Challenge complete!
+                </Text>
+                <Text className="mt-2 text-center text-sm text-[#7B857D]">
+                  Your correct answers have been saved to your account.
+                </Text>
+                <Pressable onPress={() => void loadQuestions()} className="mt-6 rounded-xl bg-[#287A4B] px-6 py-3">
+                  <Text className="font-extrabold text-white">Review questions</Text>
+                </Pressable>
+              </View>
+            ) : currentQuestion ? (
               <>
                 <View className="mt-6 rounded-2xl bg-[#174D35] p-4">
                   <View className="flex-row justify-between">
                     <Text className="text-sm font-bold text-white/75">TODAY’S QUIZ</Text>
-                    <Text className="text-sm font-extrabold text-[#F7D77C]">Earn points per answer</Text>
+                    <Text className="text-sm font-extrabold text-[#F7D77C]">
+                      +{currentQuestion.points} points / answer
+                    </Text>
                   </View>
                   <View className="mt-4 h-2 rounded-full bg-white/15">
-                    <View className="h-2 rounded-full bg-[#F4C85E]" style={{ width: `${done ? 100 : ((index + 1) / questions.length) * 100}%` }} />
+                    <View
+                      className="h-2 rounded-full bg-[#F4C85E]"
+                      style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }}
+                    />
                   </View>
                   <Text className="mt-2 text-xs font-semibold text-white/70">
-                    {done ? 'Completed' : `Question ${index + 1} of ${questions.length}`}
+                    Question {questionIndex + 1} of {questions.length}
                   </Text>
                 </View>
 
-                {done ? (
-                  <View className="mt-6 items-center rounded-3xl border border-[#E5E9E2] bg-white p-7">
-                    <Text className="text-5xl">🏆</Text>
-                    <Text className="mt-4 text-2xl font-black text-[#17251D]">Challenge complete!</Text>
-                    <Text className="mt-2 text-sm text-[#7B857D]">You earned {earned} points this round.</Text>
-                    <Pressable onPress={load} className="mt-6 rounded-xl bg-[#287A4B] px-6 py-3">
-                      <Text className="font-extrabold text-white">Play again</Text>
-                    </Pressable>
+                <View className="mt-6 rounded-3xl border border-[#E5E9E2] bg-white p-5">
+                  <View className="self-start rounded-full bg-[#EAF3EC] px-3 py-1.5">
+                    <Text className="text-[11px] font-black tracking-wider text-[#287A4B]">
+                      {currentQuestion.subject.toUpperCase()}
+                    </Text>
                   </View>
-                ) : (
-                  question && (
-                    <View className="mt-6 rounded-3xl border border-[#E5E9E2] bg-white p-5">
-                      <View className="self-start rounded-full bg-[#EAF3EC] px-3 py-1.5">
-                        <Text className="text-[11px] font-black uppercase tracking-wider text-[#287A4B]">{question.subject}</Text>
-                      </View>
-                      <Text className="mt-5 text-[22px] font-black leading-8 text-[#17251D]">{question.prompt}</Text>
-
-                      <View className="mt-5 gap-3">
-                        {question.options.map((option, n) => {
-                          const active = pick === option;
-                          const good = active && result?.correct;
-                          const bad = active && result && !result.correct;
-                          return (
-                            <Pressable
-                              key={option}
-                              disabled={!!pick}
-                              onPress={() => choose(option)}
-                              className={`flex-row items-center rounded-xl border p-4 ${
-                                good ? 'border-[#287A4B] bg-[#EDF7F0]' : bad ? 'border-[#D97757] bg-[#FFF1EC]' : 'border-[#E4E8E1] bg-white'
-                              }`}>
-                              <View className={`mr-3 h-8 w-8 items-center justify-center rounded-full ${active ? 'bg-[#287A4B]' : 'bg-[#F0F2ED]'}`}>
-                                <Text className={`text-xs font-black ${active ? 'text-white' : 'text-[#536057]'}`}>{String.fromCharCode(65 + n)}</Text>
-                              </View>
-                              <Text className="flex-1 text-sm font-bold text-[#26352B]">{option}</Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-
-                      {feedback && (
-                        <View className="mt-5 rounded-xl bg-[#F5F7F2] p-3">
-                          <Text className="text-sm font-bold text-[#26352B]">{feedback}</Text>
-                        </View>
-                      )}
-
-                      <Pressable onPress={next} disabled={!result} className={`mt-5 items-center rounded-xl py-4 ${result ? 'bg-[#174D35]' : 'bg-[#DDE4DC]'}`}>
-                        <Text className="font-extrabold text-white">{isLast ? 'Finish challenge' : 'Next question'}</Text>
-                      </Pressable>
+                  <Text className="mt-5 text-[22px] font-black leading-8 text-[#17251D]">
+                    {currentQuestion.prompt}
+                  </Text>
+                  <View className="mt-5 gap-3">
+                    {currentQuestion.options.map((option, answerIndex) => {
+                      const isSelected = selectedAnswer === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          disabled={selectedAnswer !== null || saving}
+                          onPress={() => void answer(option)}
+                          className={`flex-row items-center rounded-xl border p-4 ${
+                            isSelected
+                              ? answerResult?.correct
+                                ? "border-[#287A4B] bg-[#EDF7F0]"
+                                : "border-[#D97757] bg-[#FFF1EC]"
+                              : "border-[#E4E8E1] bg-white"
+                          }`}
+                        >
+                          <View className={`mr-3 h-8 w-8 items-center justify-center rounded-full ${isSelected ? "bg-[#287A4B]" : "bg-[#F0F2ED]"}`}>
+                            <Text className={`text-xs font-black ${isSelected ? "text-white" : "text-[#536057]"}`}>
+                              {String.fromCharCode(65 + answerIndex)}
+                            </Text>
+                          </View>
+                          <Text className="flex-1 text-sm font-bold text-[#26352B]">{option}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {saving && <Text className="mt-4 text-sm font-semibold text-[#7B857D]">Checking your answer…</Text>}
+                  {error && <Text className="mt-4 text-sm font-semibold text-[#B34B36]">{error}</Text>}
+                  {answerResult && (
+                    <View className="mt-5 rounded-xl bg-[#F5F7F2] p-3">
+                      <Text className="text-sm font-bold text-[#26352B]">
+                        {answerResult.correct
+                          ? answerResult.pointsAwarded > 0
+                            ? `Correct — +${answerResult.pointsAwarded} points!`
+                            : "Correct — you already earned points for this question."
+                          : "Not quite. Try another answer."}
+                      </Text>
                     </View>
-                  )
-                )}
+                  )}
+                  {answerResult && (
+                    <Pressable onPress={next} className="mt-5 items-center rounded-xl bg-[#174D35] py-4">
+                      <Text className="font-extrabold text-white">
+                        {answerResult.correct
+                          ? questionIndex === questions.length - 1
+                            ? "Finish challenge"
+                            : "Next question"
+                          : "Try again"}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
               </>
+            ) : (
+              <View className="mt-6 rounded-3xl border border-[#E5E9E2] bg-white p-5">
+                <Text className="font-bold text-[#17251D]">No questions are available right now.</Text>
+              </View>
             )}
 
             <View className="mt-5 rounded-2xl bg-[#FFF3D8] p-4">
-              <Text className="font-extrabold text-[#745A22]">More ways to earn</Text>
-              <Text className="mt-1 text-xs leading-5 text-[#816D42]">Daily check-ins, reward videos and lucky spins live in the Rewards area.</Text>
-              <Link href="/rewards" className="mt-3 text-sm font-black text-[#745A22]">Explore rewards →</Link>
+              <Text className="font-extrabold text-[#745A22]">Earn without ads</Text>
+              <Text className="mt-1 text-xs leading-5 text-[#816D42]">
+                Points come from learning and daily check-ins. Ads are not shown or needed.
+              </Text>
+              <Link href="/rewards" className="mt-3 text-sm font-black text-[#745A22]">
+                Explore daily rewards →
+              </Link>
             </View>
           </View>
         </ScrollView>

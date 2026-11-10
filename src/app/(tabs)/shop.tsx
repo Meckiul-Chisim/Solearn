@@ -1,7 +1,163 @@
-import { Link } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import PointsHeader from '@/components/points-header';
-import { useAuth } from '@/providers/auth-provider';
-const items=[{id:'gift',icon:'▣',name:'Digital gift cards',desc:'Popular shopping and entertainment cards.',points:'2,000',tag:'POPULAR',tint:'bg-[#EAF3EC]'},{id:'study',icon:'▤',name:'Study essentials',desc:'Notebooks, stationery and student picks.',points:'850',tag:'STUDENT PICKS',tint:'bg-[#FFF3D8]'},{id:'tech',icon:'◉',name:'Tech accessories',desc:'Useful gadgets for your everyday setup.',points:'5,500',tag:'TECH',tint:'bg-[#EAF0FF]'},{id:'recharge',icon:'▯',name:'Mobile recharge',desc:'Digital recharge vouchers for supported networks.',points:'500',tag:'DIGITAL',tint:'bg-[#FCEBE5]'}];
-export default function ShopScreen(){const {user}=useAuth();return <View className="flex-1 bg-[#F6F7F2]"><SafeAreaView className="flex-1" edges={['top']}><PointsHeader/><ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:36}}><View className="mx-auto w-full max-w-[760px] px-5 pt-7"><Text className="text-[11px] font-black uppercase tracking-[1.7px] text-[#2B8052]">SOLO STORE</Text><Text className="mt-2 text-[32px] font-black tracking-tight text-[#17251D]">Find your next reward.</Text><Text className="mt-2 max-w-[420px] text-sm leading-5 text-[#7B857D]">Browse products and digital rewards you can get with your Solo points.</Text><View className="mt-5 flex-row items-center justify-between rounded-2xl border border-[#DDE7DC] bg-white p-4"><View className="flex-1"><Text className="text-xs font-bold text-[#7B857D]">READY TO USE</Text><Text className="mt-1 text-xl font-black text-[#174D35]">{(user?.points??0).toLocaleString('en-IN')} points</Text></View><Link href="/redeem" className="rounded-xl bg-[#174D35] px-4 py-3 text-xs font-extrabold text-white">My redemptions →</Link></View><View className="mt-8 flex-row items-end justify-between"><View><Text className="text-xl font-black text-[#17251D]">Explore categories</Text><Text className="mt-1 text-xs text-[#7B857D]">Choose a reward type to get started.</Text></View><Text className="text-[10px] font-black tracking-wider text-[#849087]">04 CATEGORIES</Text></View><View className="mt-4 gap-3">{items.map(item=><View key={item.id} className="flex-row items-center rounded-[22px] border border-[#E4E9E1] bg-white p-4"><View className={`h-[62px] w-[62px] items-center justify-center rounded-[18px] ${item.tint}`}><Text className="text-[30px] font-light text-[#24563A]">{item.icon}</Text></View><View className="ml-4 flex-1"><Text className="text-[10px] font-black tracking-wider text-[#2B8052]">{item.tag}</Text><Text className="mt-1 text-[15px] font-extrabold text-[#17251D]">{item.name}</Text><Text className="mt-1 text-xs leading-4 text-[#7B857D]">{item.desc}</Text><Text className="mt-2 text-xs font-black text-[#263B2C]">From {item.points} pts</Text></View><Link href={{pathname:'/redeem',params:{id:item.id,name:item.name,points:item.points}}} asChild><Pressable className="ml-2 rounded-xl bg-[#EAF3EC] px-3 py-2.5"><Text className="text-xs font-extrabold text-[#287A4B]">Explore</Text></Pressable></Link></View>)}</View><View className="mt-6 rounded-2xl bg-[#FFF6E5] p-4"><Text className="text-sm font-extrabold text-[#745A22]">A better way to spend points</Text><Text className="mt-1 text-xs leading-5 text-[#816D42]">Select a reward, review its point cost and submit a redemption request. Live inventory and fulfilment will be connected later.</Text></View><Text className="mt-5 text-center text-[11px] leading-5 text-[#8A938B]">Catalogue and point prices are currently demo data.</Text></View></ScrollView></SafeAreaView></View>}
+import { useCallback, useEffect, useState } from "react";
+import { Image } from "expo-image";
+import { Link } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import PointsHeader from "@/components/points-header";
+import { Product, useSolearn } from "@/context/solearn-context";
+
+export default function ShopScreen() {
+  const { user, request } = useSolearn();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await request<{ products: Product[] }>("/products");
+      setProducts(result.products);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load rewards.");
+    } finally {
+      setLoading(false);
+    }
+  }, [request]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchProducts = async () => {
+      try {
+        const result = await request<{ products: Product[] }>("/products");
+        if (active) setProducts(result.products);
+      } catch (requestError) {
+        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load rewards.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchProducts();
+    return () => {
+      active = false;
+    };
+  }, [request]);
+
+  return (
+    <View className="flex-1 bg-[#F6F7F2]">
+      <SafeAreaView className="flex-1" edges={["top"]}>
+        <PointsHeader />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 36 }}>
+          <View className="mx-auto w-full max-w-[760px] px-5 pt-7">
+            <Text className="text-[11px] font-black uppercase tracking-[1.7px] text-[#2B8052]">
+              SOLO STORE
+            </Text>
+            <Text className="mt-2 text-[32px] font-black tracking-tight text-[#17251D]">
+              Reward yourself.
+            </Text>
+            <Text className="mt-2 max-w-[440px] text-sm leading-5 text-[#7B857D]">
+              Redeem your points for useful products and everyday essentials.
+            </Text>
+
+            <View className="mt-5 rounded-2xl border border-[#DDE7DC] bg-[#174D35] p-4">
+              <Text className="text-xs font-bold text-white/65">YOUR POINTS</Text>
+              <View className="mt-1 flex-row items-end justify-between">
+                <Text className="text-2xl font-black text-white">
+                  {user?.points.toLocaleString("en-IN") ?? "0"} pts
+                </Text>
+                <Link href="/wallet" className="text-xs font-extrabold text-[#F7D77C]">
+                  Wallet activity →
+                </Link>
+              </View>
+            </View>
+
+            <View className="mt-7 flex-row items-end justify-between">
+              <View>
+                <Text className="text-xl font-black text-[#17251D]">Available rewards</Text>
+                <Text className="mt-1 text-xs text-[#7B857D]">
+                  Reward requests are reviewed before fulfilment.
+                </Text>
+              </View>
+              {!loading && !error && (
+                <Text className="text-[10px] font-black tracking-wider text-[#849087]">
+                  {products.length} ITEMS
+                </Text>
+              )}
+            </View>
+
+            {loading ? (
+              <View className="mt-4 items-center rounded-2xl border border-[#E5E9E2] bg-white p-8">
+                <Text className="text-sm font-bold text-[#287A4B]">Loading rewards…</Text>
+              </View>
+            ) : error ? (
+              <View className="mt-4 rounded-2xl border border-[#E5E9E2] bg-white p-5">
+                <Text className="font-bold text-[#8D3E2A]">{error}</Text>
+                <Pressable onPress={() => void loadProducts()} className="mt-4 rounded-xl bg-[#174D35] p-3">
+                  <Text className="text-center font-extrabold text-white">Try again</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View className="mt-4 flex-row flex-wrap justify-between gap-y-4">
+                {products.map((product) => {
+                  const canAfford = (user?.points ?? 0) >= product.points;
+                  return (
+                    <View key={product.id} className="w-[48%] overflow-hidden rounded-[22px] border border-[#E2E7DF] bg-white">
+                      <View className="relative h-[150px] bg-[#EEF0EB]">
+                        <Image
+                          source={{ uri: product.image }}
+                          style={{ width: "100%", height: "100%" }}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                        <View className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1">
+                          <Text className="text-[9px] font-black tracking-wider text-[#287A4B]">{product.tag}</Text>
+                        </View>
+                      </View>
+                      <View className="p-3.5">
+                        <Text className="text-[9px] font-black tracking-[1.2px] text-[#849087]">{product.brand}</Text>
+                        <Text className="mt-1 min-h-[40px] text-sm font-extrabold leading-5 text-[#17251D]">
+                          {product.name}
+                        </Text>
+                        <View className="mt-3 flex-row items-center justify-between">
+                          <View>
+                            <Text className="text-[15px] font-black text-[#174D35]">
+                              {product.points.toLocaleString("en-IN")}
+                            </Text>
+                            <Text className="text-[9px] font-bold text-[#849087]">POINTS</Text>
+                          </View>
+                          {canAfford ? (
+                            <Link href={{ pathname: "/redeem", params: { id: product.id } }} asChild>
+                              <Pressable className="items-center justify-center rounded-xl bg-[#174D35] px-3 py-2.5">
+                                <Text className="text-xs font-extrabold text-white">Redeem</Text>
+                              </Pressable>
+                            </Link>
+                          ) : (
+                            <View className="items-center justify-center rounded-xl bg-[#EEF0EB] px-3 py-2.5">
+                              <Text className="text-[10px] font-extrabold text-[#7B857D]">
+                                Need {(product.points - (user?.points ?? 0)).toLocaleString("en-IN")} more
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <View className="mt-6 rounded-2xl bg-[#FFF6E5] p-4">
+              <Text className="text-sm font-extrabold text-[#745A22]">Need more points?</Text>
+              <Text className="mt-1 text-xs leading-5 text-[#816D42]">
+                Complete quizzes and daily check-ins. There are no ads to watch.
+              </Text>
+              <Link href="/learn" className="mt-3 text-sm font-black text-[#745A22]">
+                Start learning →
+              </Link>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}

@@ -1,154 +1,218 @@
-import { useState } from 'react';
-import { Link } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import PointsHeader from '@/components/points-header';
-import { api, ApiError } from '@/lib/api';
-import { useAuth } from '@/providers/auth-provider';
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "expo-router";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import PointsHeader from "@/components/points-header";
+import { Activity, useSolearn } from "@/context/solearn-context";
 
-const METHODS = ['UPI', 'Gift card', 'Card'] as const;
-const MIN_WITHDRAWAL = 1000; // Must match the backend rule.
-const UPI_PATTERN = /^[\w.-]{2,}@[a-zA-Z]{2,}$/;
-
-const format = (n: number) => n.toLocaleString('en-IN');
+type PayoutMethod = "UPI" | "Gift card";
+type WithdrawalResult = { status: string };
 
 export default function WalletScreen() {
-  const { user, refreshUser, signOut } = useAuth();
-  const [method, setMethod] = useState<(typeof METHODS)[number]>('UPI');
-  const [amount, setAmount] = useState('1000');
-  const [upi, setUpi] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { user, request, refreshUser, signOut } = useSolearn();
+  const [method, setMethod] = useState<PayoutMethod>("UPI");
+  const [amount, setAmount] = useState("1000");
+  const [details, setDetails] = useState("");
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState<number | null>(null);
 
-  const points = user?.points ?? 0;
-
-  const submit = async () => {
-    setError(null);
-    setSubmitted(null);
-    const requested = Number(amount);
-    if (!Number.isInteger(requested) || requested < MIN_WITHDRAWAL) return setError(`Minimum withdrawal is ${format(MIN_WITHDRAWAL)} points.`);
-    if (requested > points) return setError('You do not have enough points for that amount.');
-    if (!UPI_PATTERN.test(upi.trim())) return setError('Enter a valid UPI ID, like name@bank.');
-
-    setBusy(true);
+  const loadActivity = useCallback(async () => {
+    setLoadingActivity(true);
     try {
-      await api.withdraw({ points: requested, method, details: upi.trim() });
-      setSubmitted(requested);
-      await refreshUser();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not submit your request.');
+      const result = await request<{ activity: Activity[] }>("/activity");
+      setActivity(result.activity);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load account activity.");
     } finally {
-      setBusy(false);
+      setLoadingActivity(false);
+    }
+  }, [request]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchActivity = async () => {
+      try {
+        const result = await request<{ activity: Activity[] }>("/activity");
+        if (active) setActivity(result.activity);
+      } catch (requestError) {
+        if (active) setError(requestError instanceof Error ? requestError.message : "Could not load account activity.");
+      } finally {
+        if (active) setLoadingActivity(false);
+      }
+    };
+    void fetchActivity();
+    return () => {
+      active = false;
+    };
+  }, [request]);
+
+  const submitWithdrawal = async () => {
+    const points = Number(amount);
+    const destination = details.trim();
+    if (!Number.isInteger(points) || points < 1000) {
+      setError("Enter at least 1,000 points.");
+      return;
+    }
+    if (points > (user?.points ?? 0)) {
+      setError("Your balance is not high enough for this request.");
+      return;
+    }
+    const validDestination = method === "UPI"
+      ? /^[\w.-]+@[\w.-]+$/.test(destination)
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination);
+    if (!validDestination) {
+      setError(method === "UPI" ? "Enter a valid UPI ID." : "Enter a valid email address for your gift card.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await request<WithdrawalResult>("/withdrawals", {
+        method: "POST",
+        body: { points, method, details: destination },
+      });
+      await refreshUser();
+      await loadActivity();
+      setMessage(`Your ${points.toLocaleString("en-IN")} point request is ${result.status}. It is not an instant payout.`);
+      setDetails("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not submit your request.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <View className="flex-1 bg-[#F6F7F2]">
-      <SafeAreaView className="flex-1" edges={['top']}>
+      <SafeAreaView className="flex-1" edges={["top"]}>
         <PointsHeader />
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
           <View className="mx-auto w-full max-w-[720px] px-5 pt-5">
-            <Link href="/" className="text-sm font-bold text-[#2B8052]">← Back to home</Link>
-            <Text className="mt-5 text-xs font-bold uppercase tracking-[1.5px] text-[#7B857D]">YOUR WALLET</Text>
-            <Text className="mt-1 text-[30px] font-black text-[#17251D]">Points to possibilities.</Text>
-            <Text className="mt-2 text-sm text-[#7B857D]">Track your points and request a withdrawal.</Text>
+            <Text className="text-xs font-bold uppercase tracking-[1.5px] text-[#7B857D]">
+              YOUR WALLET
+            </Text>
+            <Text className="mt-1 text-[30px] font-black text-[#17251D]">
+              Points to possibilities.
+            </Text>
+            <Text className="mt-2 text-sm text-[#7B857D]">
+              Your balance and reward activity are saved to your account.
+            </Text>
 
             <View className="mt-6 rounded-3xl bg-[#174D35] p-5">
               <Text className="text-sm font-bold text-white/70">TOTAL POINTS</Text>
               <Text className="mt-2 text-[38px] font-black text-white">
-                {format(points)} <Text className="text-base text-[#CBE6D1]">pts</Text>
+                {(user?.points ?? 0).toLocaleString("en-IN")}{" "}
+                <Text className="text-base text-[#CBE6D1]">pts</Text>
               </Text>
               <View className="mt-4 flex-row justify-between border-t border-white/15 pt-4">
                 <View>
-                  <Text className="text-xs text-white/60">Lifetime earned</Text>
-                  <Text className="mt-1 font-extrabold text-white">{format(user?.lifetimeEarned ?? 0)} pts</Text>
+                  <Text className="text-xs text-white/60">Current streak</Text>
+                  <Text className="mt-1 font-extrabold text-white">
+                    {user?.streak ?? 0} day{user?.streak === 1 ? "" : "s"}
+                  </Text>
                 </View>
-                <View>
-                  <Text className="text-xs text-white/60">Withdrawn</Text>
-                  <Text className="mt-1 font-extrabold text-white">{format(user?.withdrawn ?? 0)} pts</Text>
+                <View className="items-end">
+                  <Text className="text-xs text-white/60">Account</Text>
+                  <Text className="mt-1 font-extrabold text-white">{user?.email}</Text>
                 </View>
               </View>
             </View>
 
-            <Text className="mt-7 text-xl font-black text-[#17251D]">Withdraw</Text>
-            <Text className="mt-1 text-xs text-[#7B857D]">Choose a payout method.</Text>
-
+            <Text className="mt-7 text-xl font-black text-[#17251D]">Request a payout</Text>
+            <Text className="mt-1 text-xs leading-5 text-[#7B857D]">
+              Requests start at 1,000 points and are queued for manual review. Payout providers are not connected yet.
+            </Text>
             <View className="mt-4 flex-row gap-2">
-              {METHODS.map((m) => (
+              {(["UPI", "Gift card"] as const).map((option) => (
                 <Pressable
-                  key={m}
-                  onPress={() => setMethod(m)}
-                  className={`flex-1 items-center rounded-xl border py-3 ${method === m ? 'border-[#287A4B] bg-[#EAF3EC]' : 'border-[#E5E9E2] bg-white'}`}>
-                  <Text className={`text-xs font-extrabold ${method === m ? 'text-[#287A4B]' : 'text-[#7B857D]'}`}>{m}</Text>
+                  key={option}
+                  onPress={() => setMethod(option)}
+                  className={`flex-1 items-center rounded-xl border py-3 ${method === option ? "border-[#287A4B] bg-[#EAF3EC]" : "border-[#E5E9E2] bg-white"}`}
+                >
+                  <Text className={`text-xs font-extrabold ${method === option ? "text-[#287A4B]" : "text-[#7B857D]"}`}>
+                    {option}
+                  </Text>
                 </Pressable>
               ))}
             </View>
-
             <View className="mt-4 rounded-2xl border border-[#E5E9E2] bg-white p-5">
-              {method === 'UPI' ? (
-                <>
-                  <Text className="text-sm font-extrabold text-[#17251D]">Points to withdraw</Text>
-                  <TextInput
-                    value={amount}
-                    onChangeText={setAmount}
-                    keyboardType="number-pad"
-                    placeholder="Enter points"
-                    className="mt-3 rounded-xl border border-[#E5E9E2] bg-[#FAFBF8] px-4 py-3 text-base font-bold text-[#17251D]"
-                  />
-                  <Text className="mt-2 text-xs text-[#7B857D]">Minimum {format(MIN_WITHDRAWAL)} points.</Text>
-
-                  <Text className="mt-5 text-sm font-extrabold text-[#17251D]">UPI ID</Text>
-                  <TextInput
-                    value={upi}
-                    onChangeText={setUpi}
-                    autoCapitalize="none"
-                    placeholder="name@bank"
-                    className="mt-3 rounded-xl border border-[#E5E9E2] bg-[#FAFBF8] px-4 py-3 text-sm text-[#17251D]"
-                  />
-
-                  {error && (
-                    <View className="mt-4 rounded-xl bg-[#FFF1EC] p-3">
-                      <Text className="text-sm font-bold text-[#A44A2B]">{error}</Text>
-                    </View>
-                  )}
-
-                  <Pressable onPress={submit} disabled={busy} className={`mt-5 items-center rounded-xl py-4 ${busy ? 'bg-[#8FB09C]' : 'bg-[#287A4B]'}`}>
-                    {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-extrabold text-white">Request withdrawal</Text>}
-                  </Pressable>
-
-                  {submitted !== null && (
-                    <View className="mt-4 rounded-xl bg-[#EDF7F0] p-3">
-                      <Text className="text-sm font-extrabold text-[#287A4B]">Request received — {format(submitted)} points on hold</Text>
-                      <Text className="mt-1 text-xs leading-5 text-[#4F7A60]">
-                        Your request is pending review. No money has been sent yet: automatic payouts are not connected.
-                      </Text>
-                    </View>
-                  )}
-                </>
-              ) : (
-                <View className="rounded-xl bg-[#F4F6F2] p-3">
-                  <Text className="text-xs leading-5 text-[#6F7A71]">{method} redemption becomes available after the relevant payout or gift-card provider is integrated.</Text>
-                </View>
-              )}
-            </View>
-
-            <View className="mt-5 rounded-2xl bg-[#FFF3D8] p-4">
-              <Text className="font-extrabold text-[#745A22]">A note about payouts</Text>
-              <Text className="mt-1 text-xs leading-5 text-[#816D42]">
-                Withdrawals are recorded as pending requests. Real UPI payouts need eligibility checks, a payout provider and fraud controls.
+              <Text className="text-sm font-extrabold text-[#17251D]">Points to request</Text>
+              <TextInput
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="number-pad"
+                placeholder="Minimum 1,000"
+                className="mt-3 rounded-xl border border-[#E5E9E2] bg-[#FAFBF8] px-4 py-3 text-base font-bold text-[#17251D]"
+              />
+              <Text className="mt-2 text-xs text-[#7B857D]">
+                Available: {(user?.points ?? 0).toLocaleString("en-IN")} points
               </Text>
-            </View>
-
-            <View className="mt-6 flex-row items-center justify-between rounded-2xl border border-[#E5E9E2] bg-white p-4">
-              <View className="flex-1 pr-3">
-                <Text className="text-sm font-extrabold text-[#17251D]">{user?.name}</Text>
-                <Text className="mt-0.5 text-xs text-[#7B857D]">{user?.email}</Text>
-              </View>
-              <Pressable onPress={signOut} className="rounded-xl border border-[#DCE4DB] px-4 py-2.5">
-                <Text className="text-xs font-extrabold text-[#A44A2B]">Sign out</Text>
+              <Text className="mt-5 text-sm font-extrabold text-[#17251D]">
+                {method === "UPI" ? "UPI ID" : "Email for gift card"}
+              </Text>
+              <TextInput
+                value={details}
+                onChangeText={setDetails}
+                autoCapitalize="none"
+                keyboardType={method === "UPI" ? "email-address" : "email-address"}
+                placeholder={method === "UPI" ? "name@bank" : "you@example.com"}
+                className="mt-3 rounded-xl border border-[#E5E9E2] bg-[#FAFBF8] px-4 py-3 text-sm text-[#17251D]"
+              />
+              {error && <Text className="mt-3 text-sm font-semibold text-[#B34B36]">{error}</Text>}
+              {message && <Text className="mt-3 text-sm font-semibold text-[#287A4B]">{message}</Text>}
+              <Pressable
+                onPress={() => void submitWithdrawal()}
+                disabled={submitting || (user?.points ?? 0) < 1000}
+                className={`mt-5 items-center rounded-xl py-4 ${!submitting && (user?.points ?? 0) >= 1000 ? "bg-[#287A4B]" : "bg-[#AAB8AC]"}`}
+              >
+                <Text className="font-extrabold text-white">
+                  {submitting ? "Submitting…" : "Submit payout request"}
+                </Text>
               </Pressable>
             </View>
+
+            <View className="mt-7 flex-row items-center justify-between">
+              <Text className="text-xl font-black text-[#17251D]">Recent activity</Text>
+              <Pressable onPress={() => void loadActivity()}>
+                <Text className="text-xs font-extrabold text-[#287A4B]">Refresh</Text>
+              </Pressable>
+            </View>
+            <View className="mt-3 rounded-2xl border border-[#E5E9E2] bg-white p-4">
+              {loadingActivity ? (
+                <Text className="text-sm text-[#7B857D]">Loading activity…</Text>
+              ) : activity.length === 0 ? (
+                <Text className="text-sm leading-5 text-[#7B857D]">
+                  No activity yet. Complete a quiz or claim your daily reward to get started.
+                </Text>
+              ) : activity.map((item, index) => (
+                <View key={`${item.createdAt}-${index}`} className="flex-row items-center justify-between border-b border-[#EDF0EA] py-3">
+                  <View className="mr-3 flex-1">
+                    <Text className="text-sm font-bold capitalize text-[#26352B]">{item.description}</Text>
+                    <Text className="mt-1 text-[10px] text-[#849087]">
+                      {new Date(`${item.createdAt.replace(" ", "T")}Z`).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text className={`text-sm font-black ${item.points >= 0 ? "text-[#287A4B]" : "text-[#8D3E2A]"}`}>
+                    {item.points > 0 ? "+" : ""}{item.points.toLocaleString("en-IN")} pts
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <Link href="/rewards" className="mt-5 text-sm font-black text-[#287A4B]">
+              Explore rewards →
+            </Link>
+            <Pressable onPress={() => void signOut()} className="mt-6 self-start rounded-xl border border-[#E5E9E2] bg-white px-4 py-3">
+              <Text className="text-sm font-extrabold text-[#7B857D]">Sign out</Text>
+            </Pressable>
+            <Text className="mt-5 text-center text-xs leading-5 text-[#8A938B]">
+              Point balances are managed by the SoloEarn server. Payout and gift-card requests remain pending until a provider is configured.
+            </Text>
           </View>
         </ScrollView>
       </SafeAreaView>
