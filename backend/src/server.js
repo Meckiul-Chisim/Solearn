@@ -4,6 +4,19 @@ import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
 
 const app = express();
+
+// Lets the web build of the app call the API from another origin.
+// Auth uses a Bearer header (no cookies), so '*' is fine for development;
+// set CORS_ORIGIN to your real web domain in production.
+const corsOrigin = process.env.CORS_ORIGIN || '*';
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json({ limit: '20kb' }));
 
 const dataDir = new URL('../data/', import.meta.url);
@@ -61,6 +74,11 @@ const questions = [
 const insertQuestion = db.prepare('INSERT OR IGNORE INTO questions (id, subject, prompt, options, answer, points) VALUES (?, ?, ?, ?, ?, ?)');
 for (const q of questions) insertQuestion.run(q[0], q[1], q[2], JSON.stringify(q[3]), q[4], q[5]);
 
+// The default secret is public (it is in this repo), so anyone could forge a
+// login token with it. Refuse to start in production without a real secret.
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set when NODE_ENV=production.');
+}
 const jwtSecret = process.env.JWT_SECRET || 'development-only-change-me';
 const sign = (payload) => {
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -98,6 +116,9 @@ const auth = (req, res, next) => {
 const publicUser = (user) => ({
   id: user.id, name: user.name, email: user.email, referralCode: user.referral_code,
   points: user.points, streak: user.streak,
+  // Lets the app enable or disable the daily-reward button without guessing.
+  lastRewardDate: user.last_reward_date,
+  canClaimDaily: user.last_reward_date !== utcDate(),
 });
 const utcDate = () => new Date().toISOString().slice(0, 10);
 
@@ -143,8 +164,28 @@ app.post('/auth/login', (req, res) => {
 
 app.get('/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
 app.get('/questions', auth, (_req, res) => {
-  const rows = db.prepare('SELECT id, subject, prompt, options FROM questions ORDER BY id').all();
+  const rows = db.prepare('SELECT id, subject, prompt, options, points FROM questions ORDER BY id').all();
   res.json({ questions: rows.map((q) => ({ ...q, options: JSON.parse(q.options) })) });
+});
+
+// The user's recent point history for the wallet screen: points earned
+// (rewards) and points spent on withdrawals, newest first.
+const activityLabels = {
+  question: 'Quiz answer',
+  daily: 'Daily reward',
+  referral: 'Referral bonus',
+  ad: 'Ad reward',
+  withdrawal: 'Payout request',
+};
+app.get('/activity', auth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT kind AS type, points, created_at AS createdAt FROM rewards WHERE user_id = ?
+    UNION ALL
+    SELECT 'withdrawal' AS type, -points AS points, created_at AS createdAt FROM withdrawals WHERE user_id = ?
+    ORDER BY createdAt DESC
+    LIMIT 20
+  `).all(req.user.id, req.user.id);
+  res.json({ activity: rows.map((row) => ({ ...row, description: activityLabels[row.type] ?? row.type })) });
 });
 
 app.post('/questions/:id/answer', auth, (req, res) => {
@@ -217,6 +258,10 @@ app.post('/withdrawals', auth, (req, res) => {
   }
   res.status(201).json({ status: 'pending' });
 });
+
+// Unknown routes get a JSON error like every other response, so the app can
+// show a readable message instead of failing to parse an HTML error page.
+app.use((_req, res) => res.status(404).json({ error: 'Not found.' }));
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => console.log(`SoLearn API listening on http://localhost:${port}`));
