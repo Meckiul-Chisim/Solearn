@@ -1,56 +1,39 @@
-# Welcome to your Expo app 👋
+# SoloEarn
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+SoloEarn is an ad-free learning and rewards app built with Expo Router. Accounts, points, quizzes, daily rewards, spins, shop redemptions, and payout requests use the companion API; balances are not stored as demo values in the app.
 
-## Get started
+## Run the app and API
 
-1. Install dependencies
+From the workspace root, start the API:
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```powershell
+cd backend
+Copy-Item .env.example .env
+npm install
+npm start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+In another terminal, start the Expo app:
 
-### Other setup steps
+```powershell
+cd Solearn
+npm install
+npm run start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+The API requires Node.js 22.9 or newer. Android emulators use `http://10.0.2.2:3000` by default; iOS simulators and web use `http://localhost:3000`. To use a physical device, set `EXPO_PUBLIC_API_URL` in the app's local `.env` to the computer's LAN address, for example `http://192.168.1.20:3000`.
 
-## Learn more
+For web development, set `CORS_ORIGIN` in `backend/.env` to the Expo web origin (usually `http://localhost:8081`). Keep `JWT_SECRET` private and replace the example value before exposing the API beyond local development.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Rewards and fulfilment
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Quiz answers, daily check-ins, spins, redemptions, and payout requests are validated and recorded by the API in SQLite. Daily check-ins and spins are limited to one per account per day. There are no ads or ad-reward endpoints in this version.
 
-## Join the community
+Shop redemptions and wallet payout requests are stored as pending requests. No items are shipped and no money or gift cards are transferred automatically; a fulfilment provider and an operations workflow still need to be configured. The development API stores delivery and payout details in its local SQLite database, so do not use real personal or payment details with an exposed development server.
 
-Join our community of developers creating universal apps.
+Run API integration tests with:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```powershell
+cd backend
+npm test
+```
