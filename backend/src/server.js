@@ -143,8 +143,8 @@ const publicUser = (user) => ({
   lastRewardDate: user.last_reward_date,
   canClaimDaily: user.last_reward_date !== utcDate(),
   canSpin: !db.prepare(
-    'SELECT 1 FROM rewards WHERE user_id = ? AND kind = ? AND source_id = ?',
-  ).get(user.id, 'spin', utcDate()),
+    'SELECT 1 FROM rewards WHERE user_id = ? AND kind = ? AND created_at >= datetime("now", "-1 day") LIMIT 1',
+  ).get(user.id, 'spin'),
 });
 const utcDate = () => new Date().toISOString().slice(0, 10);
 const insertLedgerEntry = db.prepare(
@@ -309,6 +309,13 @@ const spinOutcomes = [
 ];
 
 app.post('/rewards/spin', auth, (req, res) => {
+  const lastSpin = db.prepare(
+    'SELECT MAX(created_at) AS last_spin FROM rewards WHERE user_id = ? AND kind = ?',
+  ).get(req.user.id, 'spin');
+  if (lastSpin?.last_spin && new Date(lastSpin.last_spin).getTime() > Date.now() - 24 * 60 * 60 * 1000) {
+    return res.status(409).json({ error: 'Daily spin already used.' });
+  }
+
   const today = utcDate();
   const outcomeIndex = crypto.randomInt(spinOutcomes.length);
   const outcome = spinOutcomes[outcomeIndex];

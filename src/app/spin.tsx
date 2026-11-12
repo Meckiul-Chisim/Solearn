@@ -1,5 +1,5 @@
-import { Fragment, useState } from "react";
-import { Link } from "expo-router";
+import { Fragment, useCallback, useState } from "react";
+import { Link, useFocusEffect } from "expo-router";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
@@ -37,6 +37,12 @@ export default function SpinScreen() {
   const wheelStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUser();
+    }, [refreshUser]),
+  );
 
   const shouldShowResult = !!result && !user?.canSpin;
 
