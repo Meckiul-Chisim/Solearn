@@ -6,7 +6,7 @@ import PointsHeader from "@/components/points-header";
 import { Activity, useSolearn } from "@/context/solearn-context";
 
 type PayoutMethod = "UPI" | "Gift card";
-type WithdrawalResult = { status: string };
+type WithdrawalResult = { id: number; status: "pending"; pointsDeducted: number };
 
 export default function WalletScreen() {
   const { user, request, refreshUser, signOut } = useSolearn();
@@ -78,7 +78,9 @@ export default function WalletScreen() {
       });
       await refreshUser();
       await loadActivity();
-      setMessage(`Your ${points.toLocaleString("en-IN")} point request is ${result.status}. It is not an instant payout.`);
+      setMessage(
+        `Request #${result.id} is pending review. ${result.pointsDeducted.toLocaleString("en-IN")} points are reserved; no payment or gift card is sent automatically.`,
+      );
       setDetails("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not submit your request.");
@@ -123,9 +125,9 @@ export default function WalletScreen() {
               </View>
             </View>
 
-            <Text className="mt-7 text-xl font-black text-[#17251D]">Request a payout</Text>
+            <Text className="mt-7 text-xl font-black text-[#17251D]">Redeem points</Text>
             <Text className="mt-1 text-xs leading-5 text-[#7B857D]">
-              Requests start at 1,000 points and are queued for manual review. Payout providers are not connected yet.
+              Requests start at 1,000 points and are reviewed manually. Points have no rupee conversion here; gift-card brand and value are agreed during review. No transfer or card delivery is automatic.
             </Text>
             <View className="mt-4 flex-row gap-2">
               {(["UPI", "Gift card"] as const).map((option) => (
@@ -159,7 +161,9 @@ export default function WalletScreen() {
                 value={details}
                 onChangeText={setDetails}
                 autoCapitalize="none"
-                keyboardType={method === "UPI" ? "email-address" : "email-address"}
+                autoCorrect={false}
+                maxLength={254}
+                keyboardType="email-address"
                 placeholder={method === "UPI" ? "name@bank" : "you@example.com"}
                 className="mt-3 rounded-xl border border-[#E5E9E2] bg-[#FAFBF8] px-4 py-3 text-sm text-[#17251D]"
               />
@@ -171,7 +175,7 @@ export default function WalletScreen() {
                 className={`mt-5 items-center rounded-xl py-4 ${!submitting && (user?.points ?? 0) >= 1000 ? "bg-[#287A4B]" : "bg-[#AAB8AC]"}`}
               >
                 <Text className="font-extrabold text-white">
-                  {submitting ? "Submitting…" : "Submit payout request"}
+                  {submitting ? "Submitting…" : "Submit redemption request"}
                 </Text>
               </Pressable>
             </View>
@@ -189,10 +193,15 @@ export default function WalletScreen() {
                 <Text className="text-sm leading-5 text-[#7B857D]">
                   No activity yet. Complete a quiz or claim your daily reward to get started.
                 </Text>
-              ) : activity.map((item, index) => (
-                <View key={`${item.createdAt}-${index}`} className="flex-row items-center justify-between border-b border-[#EDF0EA] py-3">
+              ) : activity.map((item) => (
+                <View key={item.id} className="flex-row items-center justify-between border-b border-[#EDF0EA] py-3">
                   <View className="mr-3 flex-1">
                     <Text className="text-sm font-bold capitalize text-[#26352B]">{item.description}</Text>
+                    {item.status && (
+                      <Text className="mt-1 text-[10px] font-bold uppercase text-[#7B857D]">
+                        {item.status === "completed" ? "Fulfilled" : item.status === "rejected" ? "Rejected · points refunded" : "Pending manual review"}
+                      </Text>
+                    )}
                     <Text className="mt-1 text-[10px] text-[#849087]">
                       {new Date(`${item.createdAt.replace(" ", "T")}Z`).toLocaleDateString()}
                     </Text>
@@ -211,7 +220,7 @@ export default function WalletScreen() {
               <Text className="text-sm font-extrabold text-[#7B857D]">Sign out</Text>
             </Pressable>
             <Text className="mt-5 text-center text-xs leading-5 text-[#8A938B]">
-              Point balances are managed by the SoloEarn server. Payout and gift-card requests remain pending until a provider is configured.
+              Point balances and redemption requests are stored by the SoloEarn server. An operator must fulfil each request outside the app; rejected requests return their points.
             </Text>
           </View>
         </ScrollView>

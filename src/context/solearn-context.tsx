@@ -22,20 +22,14 @@ export type Question = {
   points: number;
 };
 
-export type Product = {
-  id: string;
-  name: string;
-  brand: string;
-  points: number;
-  tag: string;
-  image: string;
-};
-
 export type Activity = {
+  id: number;
   type: string;
   description: string;
   points: number;
   createdAt: string;
+  method?: "UPI" | "Gift card" | null;
+  status?: "pending" | "completed" | "rejected" | null;
 };
 
 type RequestOptions = {

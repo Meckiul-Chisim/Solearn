@@ -38,13 +38,15 @@ export default function SpinScreen() {
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
+  const shouldShowResult = !!result && !user?.canSpin;
+
   const finishSpin = (spinResult: SpinResult) => {
     setSpinning(false);
     setResult(spinResult);
   };
 
   const spin = async () => {
-    if (spinning || result || !user?.canSpin) return;
+    if (spinning || !user?.canSpin) return;
     setSpinning(true);
     setError(null);
     try {
@@ -124,12 +126,12 @@ export default function SpinScreen() {
               </Animated.View>
             </View>
 
-            {result ? (
+            {shouldShowResult ? (
               <View className="mt-4 items-center rounded-2xl border border-[#DDE7DC] bg-white px-7 py-4">
                 <Text className="text-xs font-bold uppercase tracking-wider text-[#7B857D]">YOUR RESULT</Text>
-                <Text className="mt-1 text-2xl font-black text-[#174D35]">{result.label}</Text>
+                <Text className="mt-1 text-2xl font-black text-[#174D35]">{result?.label}</Text>
                 <Text className="mt-1 text-xs text-[#7B857D]">
-                  {result.pointsAwarded > 0
+                  {result && result.pointsAwarded > 0
                     ? `${result.pointsAwarded} points added to your balance.`
                     : "No points this time. Try again tomorrow."}
                 </Text>
@@ -146,12 +148,12 @@ export default function SpinScreen() {
 
             {error && <Text className="mt-4 text-center text-sm font-semibold text-[#B34B36]">{error}</Text>}
             <Pressable
-              disabled={spinning || !!result || !user?.canSpin}
+              disabled={spinning || !user?.canSpin}
               onPress={() => void spin()}
-              className={`mt-6 w-full max-w-[320px] items-center rounded-2xl py-4 ${spinning || result || !user?.canSpin ? "bg-[#AAB8AC]" : "bg-[#174D35]"}`}
+              className={`mt-6 w-full max-w-[320px] items-center rounded-2xl py-4 ${spinning || !user?.canSpin ? "bg-[#AAB8AC]" : "bg-[#174D35]"}`}
             >
               <Text className="font-black text-white">
-                {spinning ? "Spinning…" : result || !user?.canSpin ? "Come back tomorrow" : "SPIN NOW"}
+                {spinning ? "Spinning…" : !user?.canSpin ? "Come back tomorrow" : "SPIN NOW"}
               </Text>
             </Pressable>
 

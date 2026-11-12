@@ -35,6 +35,8 @@ function ActionTile({ icon, title, subtitle, href, tint }: TileProps) {
 
 export default function HomeScreen() {
   const { user } = useSolearn();
+  const displayName = user?.name?.trim() ? user.name.trim().split(/\s+/)[0] : "student";
+
   return (
     <View className="flex-1 bg-[#F6F7F2]">
       <SafeAreaView className="flex-1" edges={["top"]}>
@@ -51,7 +53,7 @@ export default function HomeScreen() {
                   YOUR DAILY PROGRESS
                 </Text>
                 <Text className="mt-1 text-[30px] font-black tracking-tight text-[#17251D]">
-                  Hey, {user?.name.split(" ")[0] ?? "student"} 👋
+                  Hey, {displayName} 👋
                 </Text>
               </View>
 
@@ -94,10 +96,10 @@ export default function HomeScreen() {
                   Points available to use
                 </Text>
                 <Link
-                  href="/shop"
+                  href="/wallet"
                   className="text-xs font-extrabold text-[#F7D77C]"
                 >
-                  Explore shop →
+                  Redeem points →
                 </Link>
               </View>
 
@@ -157,7 +159,7 @@ export default function HomeScreen() {
               </View>
               <View className="rounded-full bg-[#E8F2E9] px-3 py-1.5">
                 <Text className="text-xs font-extrabold text-[#287A4B]">
-                  +20 PTS
+                  10 PTS / ANSWER
                 </Text>
               </View>
             </View>
@@ -184,31 +186,31 @@ export default function HomeScreen() {
             <View className="mt-8 flex-row items-center justify-between">
               <View>
                 <Text className="text-xl font-black text-[#17251D]">
-                  Spend your points
+                  Redeem your points
                 </Text>
                 <Text className="mt-1 text-sm text-[#7B857D]">
                   Pick something you’ll love.
                 </Text>
               </View>
               <Link
-                href="/shop"
+                href="/wallet"
                 className="text-sm font-extrabold text-[#2B8052]"
               >
-                Shop all →
+                Redeem points →
               </Link>
             </View>
 
-            <Link href="/shop" asChild>
+            <Link href="/wallet" asChild>
               <Pressable className="mt-4 flex-row items-center rounded-2xl bg-[#F1E9D7] p-4">
                 <View className="flex-1">
                   <Text className="text-[11px] font-black uppercase tracking-widest text-[#8B6B31]">
-                    SOLO STORE
+                    REDEEM YOUR POINTS
                   </Text>
                   <Text className="mt-1 text-lg font-black text-[#322B1E]">
-                    Your points, your picks.
+                    UPI or gift-card request.
                   </Text>
                   <Text className="mt-1 text-xs text-[#766B58]">
-                    Gift cards · Study essentials · More
+                    Requests are reviewed manually; no conversion or card value is set.
                   </Text>
                 </View>
                 <Text className="text-[38px]">🛍️</Text>
