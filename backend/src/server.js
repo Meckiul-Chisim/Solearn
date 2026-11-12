@@ -143,7 +143,7 @@ const publicUser = (user) => ({
   lastRewardDate: user.last_reward_date,
   canClaimDaily: user.last_reward_date !== utcDate(),
   canSpin: !db.prepare(
-    'SELECT 1 FROM rewards WHERE user_id = ? AND kind = ? AND created_at >= datetime("now", "-1 day") LIMIT 1',
+    "SELECT 1 FROM rewards WHERE user_id = ? AND kind = ? AND created_at >= datetime('now', '-24 hours') LIMIT 1",
   ).get(user.id, 'spin'),
 });
 const utcDate = () => new Date().toISOString().slice(0, 10);
@@ -309,31 +309,29 @@ const spinOutcomes = [
 ];
 
 app.post('/rewards/spin', auth, (req, res) => {
-  const lastSpin = db.prepare(
-    'SELECT MAX(created_at) AS last_spin FROM rewards WHERE user_id = ? AND kind = ?',
-  ).get(req.user.id, 'spin');
-  if (lastSpin?.last_spin && new Date(lastSpin.last_spin).getTime() > Date.now() - 24 * 60 * 60 * 1000) {
-    return res.status(409).json({ error: 'Daily spin already used.' });
-  }
-
-  const today = utcDate();
   const outcomeIndex = crypto.randomInt(spinOutcomes.length);
   const outcome = spinOutcomes[outcomeIndex];
+  const spinId = crypto.randomUUID();
   db.exec('BEGIN IMMEDIATE');
   try {
+    const recentSpin = db.prepare(
+      "SELECT 1 FROM rewards WHERE user_id = ? AND kind = ? AND created_at >= datetime('now', '-24 hours') LIMIT 1",
+    ).get(req.user.id, 'spin');
+    if (recentSpin) {
+      db.exec('ROLLBACK');
+      return res.status(409).json({ error: 'You can spin once every 24 hours.' });
+    }
+
     db.prepare('INSERT INTO rewards (user_id, kind, source_id, points) VALUES (?, ?, ?, ?)')
-      .run(req.user.id, 'spin', today, outcome.pointsAwarded);
+      .run(req.user.id, 'spin', spinId, outcome.pointsAwarded);
     if (outcome.pointsAwarded > 0) {
       db.prepare('UPDATE users SET points = points + ? WHERE id = ?')
         .run(outcome.pointsAwarded, req.user.id);
     }
-    insertLedgerEntry.run(req.user.id, 'spin', today, outcome.pointsAwarded);
+    insertLedgerEntry.run(req.user.id, 'spin', spinId, outcome.pointsAwarded);
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
-    if (error?.message?.includes('UNIQUE')) {
-      return res.status(409).json({ error: 'Daily spin already used.' });
-    }
     return res.status(500).json({ error: 'Could not save your spin.' });
   }
   res.json({ ...outcome, outcomeIndex });

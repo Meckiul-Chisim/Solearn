@@ -86,6 +86,12 @@ test('earnings, redemptions, and admin review use the points ledger', async () =
   assert.equal((await request('/me', { token })).data.user.canSpin, false);
 
   const userId = registration.data.user.id;
+  db.prepare("UPDATE rewards SET created_at = datetime('now', '-25 hours') WHERE user_id = ? AND kind = 'spin'").run(userId);
+  assert.equal((await request('/me', { token })).data.user.canSpin, true);
+  const resetSpin = await request('/rewards/spin', { method: 'POST', token, body: {} });
+  assert.equal(resetSpin.status, 200);
+  assert.equal((await request('/me', { token })).data.user.canSpin, false);
+
   db.prepare('UPDATE users SET points = 5000 WHERE id = ?').run(userId);
 
   const invalidMethod = await request('/withdrawals', {

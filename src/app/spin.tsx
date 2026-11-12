@@ -148,7 +148,7 @@ export default function SpinScreen() {
                   ? "Your wheel is spinning…"
                   : user?.canSpin
                     ? "Your daily spin is ready"
-                    : "You’ve already used today’s spin"}
+                    : "You’ve used your spin within the last 24 hours"}
               </Text>
             )}
 
@@ -159,12 +159,12 @@ export default function SpinScreen() {
               className={`mt-6 w-full max-w-[320px] items-center rounded-2xl py-4 ${spinning || !user?.canSpin ? "bg-[#AAB8AC]" : "bg-[#174D35]"}`}
             >
               <Text className="font-black text-white">
-                {spinning ? "Spinning…" : !user?.canSpin ? "Come back tomorrow" : "SPIN NOW"}
+                {spinning ? "Spinning…" : !user?.canSpin ? "Available again in 24 hours" : "SPIN NOW"}
               </Text>
             </Pressable>
 
             <View className="mt-7 w-full rounded-2xl bg-[#FFF6E5] p-4">
-              <Text className="text-sm font-extrabold text-[#745A22]">One spin per day</Text>
+              <Text className="text-sm font-extrabold text-[#745A22]">One spin every 24 hours</Text>
               <Text className="mt-1 text-xs leading-5 text-[#816D42]">
                 Your result is selected and saved by the server, so replaying the animation cannot award extra points.
               </Text>
